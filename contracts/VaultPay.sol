@@ -31,6 +31,7 @@ contract VaultPay is ReentrancyGuard {
     IERC20 public immutable token;
     uint256 public nextPaymentId = 1;
 
+    // mapping(keyType => valueType) visibility name;
     mapping(uint256 paymentId => Payment payment) private payments;
 
     event PaymentCreated(
@@ -70,12 +71,12 @@ contract VaultPay is ReentrancyGuard {
         uint64 deadline,
         bytes32 memoHash
     ) external nonReentrant returns (uint256 paymentId) {
-        // TODO: implement
-        
+        // Check inputs        
         if (recipient == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
         if (deadline <= block.timestamp) revert InvalidDeadline();
 
+        // Create payment
         paymentId = nextPaymentId++;
         payments[paymentId] = Payment({
             payer: msg.sender,
@@ -87,16 +88,28 @@ contract VaultPay is ReentrancyGuard {
             memoHash: memoHash
         });
 
+        // Transfer tokens from payer to contract
         token.safeTransferFrom(msg.sender, address(this), amount);
-        
+
+        // Emit event
         emit PaymentCreated(paymentId, msg.sender, recipient, amount, deadline, memoHash);
     }
 
     /// @notice Claim an active payment.
     /// @dev Only the intended recipient should be able to claim.
     function claimPayment(uint256 paymentId) external nonReentrant {
-        // TODO: implement
-        revert("TODO: claimPayment");
+        Payment storage payment = payments[paymentId];
+
+        if (payment.status == PaymentStatus.None) revert PaymentNotFound();
+        if (payment.status != PaymentStatus.Created) revert PaymentNotActive();
+        if (payment.recipient != msg.sender) revert NotRecipient();
+        if (block.timestamp > payment.deadline) revert PaymentExpired();
+
+        payment.status = PaymentStatus.Claimed;
+
+        token.safeTransfer(payment.recipient, payment.amount);
+
+        emit PaymentClaimed(paymentId, payment.recipient, payment.amount);
     }
 
     /// @notice Cancel an expired active payment and refund payer.
