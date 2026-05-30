@@ -25,11 +25,24 @@ describe("VaultPay", function () {
     const { payer, recipient, token, vault } = await deployFixture();
     const deadline = BigInt(await time.latest()) + 3600n;
 
-    await expect(vault.connect(payer).createPayment(recipient.address, parse("25"), deadline, ZERO_HASH))
+    await expect(
+      vault
+        .connect(payer)
+        .createPayment(recipient.address, parse("25"), deadline, ZERO_HASH),
+    )
       .to.emit(vault, "PaymentCreated")
-      .withArgs(1, payer.address, recipient.address, parse("25"), deadline, ZERO_HASH);
+      .withArgs(
+        1,
+        payer.address,
+        recipient.address,
+        parse("25"),
+        deadline,
+        ZERO_HASH,
+      );
 
-    expect(await token.balanceOf(await vault.getAddress())).to.equal(parse("25"));
+    expect(await token.balanceOf(await vault.getAddress())).to.equal(
+      parse("25"),
+    );
 
     const payment = await vault.getPayment(1);
     expect(payment.payer).to.equal(payer.address);
@@ -42,7 +55,9 @@ describe("VaultPay", function () {
     const { payer, recipient, token, vault } = await deployFixture();
     const deadline = BigInt(await time.latest()) + 3600n;
 
-    await vault.connect(payer).createPayment(recipient.address, parse("10"), deadline, ZERO_HASH);
+    await vault
+      .connect(payer)
+      .createPayment(recipient.address, parse("10"), deadline, ZERO_HASH);
 
     await expect(vault.connect(recipient).claimPayment(1))
       .to.emit(vault, "PaymentClaimed")
@@ -57,9 +72,13 @@ describe("VaultPay", function () {
     const { payer, recipient, attacker, vault } = await deployFixture();
     const deadline = BigInt(await time.latest()) + 3600n;
 
-    await vault.connect(payer).createPayment(recipient.address, parse("10"), deadline, ZERO_HASH);
+    await vault
+      .connect(payer)
+      .createPayment(recipient.address, parse("10"), deadline, ZERO_HASH);
 
-    await expect(vault.connect(attacker).claimPayment(1)).to.be.revertedWithCustomError(vault, "NotRecipient");
+    await expect(
+      vault.connect(attacker).claimPayment(1),
+    ).to.be.revertedWithCustomError(vault, "NotRecipient");
   });
 
   it("lets payer cancel only after deadline", async function () {
@@ -68,9 +87,13 @@ describe("VaultPay", function () {
     const deadline = BigInt(await time.latest()) + 100n;
     const payerBefore = await token.balanceOf(payer.address);
 
-    await vault.connect(payer).createPayment(recipient.address, amount, deadline, ZERO_HASH);
+    await vault
+      .connect(payer)
+      .createPayment(recipient.address, amount, deadline, ZERO_HASH);
 
-    await expect(vault.connect(payer).cancelPayment(1)).to.be.revertedWithCustomError(vault, "PaymentNotExpired");
+    await expect(
+      vault.connect(payer).cancelPayment(1),
+    ).to.be.revertedWithCustomError(vault, "PaymentNotExpired");
 
     await time.increaseTo(deadline + 1n);
 
@@ -87,24 +110,81 @@ describe("VaultPay", function () {
     const { payer, recipient, vault } = await deployFixture();
     const deadline = BigInt(await time.latest()) + 3600n;
 
-    await vault.connect(payer).createPayment(recipient.address, parse("10"), deadline, ZERO_HASH);
+    await vault
+      .connect(payer)
+      .createPayment(recipient.address, parse("10"), deadline, ZERO_HASH);
     await vault.connect(recipient).claimPayment(1);
 
-    await expect(vault.connect(recipient).claimPayment(1)).to.be.revertedWithCustomError(vault, "PaymentNotActive");
-    await expect(vault.connect(payer).cancelPayment(1)).to.be.revertedWithCustomError(vault, "PaymentNotActive");
+    await expect(
+      vault.connect(recipient).claimPayment(1),
+    ).to.be.revertedWithCustomError(vault, "PaymentNotActive");
+    await expect(
+      vault.connect(payer).cancelPayment(1),
+    ).to.be.revertedWithCustomError(vault, "PaymentNotActive");
   });
 
   it("rejects invalid payment creation inputs", async function () {
     const { payer, recipient, vault } = await deployFixture();
     const deadline = BigInt(await time.latest()) + 3600n;
 
-    await expect(vault.connect(payer).createPayment(ethers.ZeroAddress, parse("1"), deadline, ZERO_HASH))
-      .to.be.revertedWithCustomError(vault, "ZeroAddress");
+    await expect(
+      vault
+        .connect(payer)
+        .createPayment(ethers.ZeroAddress, parse("1"), deadline, ZERO_HASH),
+    ).to.be.revertedWithCustomError(vault, "ZeroAddress");
 
-    await expect(vault.connect(payer).createPayment(recipient.address, 0, deadline, ZERO_HASH))
-      .to.be.revertedWithCustomError(vault, "ZeroAmount");
+    await expect(
+      vault
+        .connect(payer)
+        .createPayment(recipient.address, 0, deadline, ZERO_HASH),
+    ).to.be.revertedWithCustomError(vault, "ZeroAmount");
 
-    await expect(vault.connect(payer).createPayment(recipient.address, parse("1"), 1, ZERO_HASH))
-      .to.be.revertedWithCustomError(vault, "InvalidDeadline");
+    await expect(
+      vault
+        .connect(payer)
+        .createPayment(recipient.address, parse("1"), 1, ZERO_HASH),
+    ).to.be.revertedWithCustomError(vault, "InvalidDeadline");
+  });
+
+  it("Rejects claims after deadline", async function () {
+    const { payer, recipient, vault } = await deployFixture();
+    const deadline = BigInt(await time.latest()) + 100n;
+
+    await vault
+      .connect(payer)
+      .createPayment(recipient.address, parse("10"), deadline, ZERO_HASH);
+
+    await time.increaseTo(deadline + 1n);
+
+    await expect(
+      vault.connect(recipient).claimPayment(1),
+    ).to.be.revertedWithCustomError(vault, "PaymentExpired");
+  });
+
+  it("Rejects cancellations by non-payers", async function () {
+    const { payer, recipient, attacker, vault } = await deployFixture();
+    const deadline = BigInt(await time.latest()) + 100n;
+
+    await vault
+      .connect(payer)
+      .createPayment(recipient.address, parse("10"), deadline, ZERO_HASH);
+
+    await time.increaseTo(deadline + 1n);
+
+    await expect(
+      vault.connect(attacker).cancelPayment(1),
+    ).to.be.revertedWithCustomError(vault, "NotPayer");
+  });
+
+  it("Rejects operations on non-existent payments", async function () {
+    const { payer, recipient, vault } = await deployFixture();
+
+    await expect(
+      vault.connect(recipient).claimPayment(999),
+    ).to.be.revertedWithCustomError(vault, "PaymentNotFound");
+
+    await expect(
+      vault.connect(payer).cancelPayment(999),
+    ).to.be.revertedWithCustomError(vault, "PaymentNotFound");
   });
 });
