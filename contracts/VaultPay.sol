@@ -115,8 +115,18 @@ contract VaultPay is ReentrancyGuard {
     /// @notice Cancel an expired active payment and refund payer.
     /// @dev Only the original payer should be able to cancel after deadline.
     function cancelPayment(uint256 paymentId) external nonReentrant {
-        // TODO: implement
-        revert("TODO: cancelPayment");
+        Payment storage payment = payments[paymentId];
+
+        if (payment.status == PaymentStatus.None) revert PaymentNotFound();
+        if (payment.status != PaymentStatus.Created) revert PaymentNotActive();
+        if (payment.payer != msg.sender) revert NotPayer();
+        if (block.timestamp <= payment.deadline) revert PaymentNotExpired();
+
+        payment.status = PaymentStatus.Cancelled;
+
+        token.safeTransfer(payment.payer, payment.amount);
+
+        emit PaymentCancelled(paymentId, payment.payer, payment.amount);
     }
 
     function getPayment(uint256 paymentId) external view returns (Payment memory) {
